@@ -31,6 +31,15 @@ jobs:
           {
             echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}";
             echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}";
+            echo "SHEET_1_ID=${{ secrets.SHEET_1_ID }}";
+            echo "SHEET_1_TAB=${{ secrets.SHEET_1_TAB }}";
+            echo "SHEET_1_NAME=${{ secrets.SHEET_1_NAME }}";
+            echo "SHEET_2_ID=${{ secrets.SHEET_2_ID }}";
+            echo "SHEET_2_TAB=${{ secrets.SHEET_2_TAB }}";
+            echo "SHEET_2_NAME=${{ secrets.SHEET_2_NAME }}";
+            echo "SHEET_3_ID=${{ secrets.SHEET_3_ID }}";
+            echo "SHEET_3_TAB=${{ secrets.SHEET_3_TAB }}";
+            echo "SHEET_3_NAME=${{ secrets.SHEET_3_NAME }}";
             echo "GOOGLE_APPLICATION_CREDENTIALS=${{ github.workspace }}/credentials/google_service_account.json";
           } > .env
 
