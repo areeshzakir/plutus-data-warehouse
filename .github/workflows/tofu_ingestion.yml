@@ -23,9 +23,11 @@ jobs:
           sudo apt-get install -y libssl-dev libffi-dev
 
       - name: Create credentials and env
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           mkdir -p credentials logs
-          echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}" > credentials/google_service_account.json
+          python3 -c "import json, os; json.dump(json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON']), open('credentials/google_service_account.json', 'w'), indent=2)"
           {
             echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}";
             echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}";
@@ -43,12 +45,7 @@ jobs:
 
       - name: Validate credentials JSON
         run: |
-          python - <<'PY'
-          import json
-          with open('credentials/google_service_account.json') as f:
-              json.load(f)
-          print("Google credentials JSON looks good.")
-          PY
+          python -c "import json; json.load(open('credentials/google_service_account.json')); print('Google credentials JSON looks good.')"
 
       - name: Install dependencies
         run: |
@@ -89,7 +86,7 @@ jobs:
             echo "SLACK_WEBHOOK_URL not set; skipping Slack notification."
             exit 0
           fi
-          python - <<'PY'
+          cat > /tmp/slack_notify.py << 'SCRIPT'
           import json
           import os
           import urllib.request
@@ -108,7 +105,9 @@ jobs:
           )
           with urllib.request.urlopen(req) as resp:
               print(f"Slack response status: {resp.status}")
-          PY
+          SCRIPT
+          sed 's/^          //' /tmp/slack_notify.py > /tmp/slack_notify_fixed.py
+          python3 /tmp/slack_notify_fixed.py
 
       - name: Upload logs (artifact)
         if: always()
