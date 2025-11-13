@@ -91,7 +91,7 @@ jobs:
               else:
                   tail = "\n".join(lines[-20:]) if lines else "Log file was empty."
                   print("INGESTION SUMMARY not found. Recent log lines:\n" + tail)
-PY
+          PY
           {
             echo "SLACK_SUMMARY<<'EOF'";
             cat "$SUMMARY_FILE";
@@ -130,7 +130,7 @@ PY
           )
           with urllib.request.urlopen(req) as resp:
               print(f"Slack response status: {resp.status}")
-PY
+          PY
 
       - name: Upload logs (artifact)
         if: always()
