@@ -67,6 +67,71 @@ jobs:
           . venv/bin/activate
           python cli.py tofu-ingestion
 
+      - name: Extract ingestion summary
+        if: always()
+        run: |
+          SUMMARY_FILE=summary.txt
+          python - <<'PY' > "$SUMMARY_FILE"
+import pathlib
+
+log_path = pathlib.Path("logs/tofu_ingestion.log")
+if not log_path.exists():
+    print("Log file logs/tofu_ingestion.log not found.")
+else:
+    lines = log_path.read_text().splitlines()
+    summary_lines = []
+    capture = False
+    for line in lines:
+        if "INGESTION SUMMARY" in line:
+            capture = True
+        if capture:
+            summary_lines.append(line)
+    if summary_lines:
+        print("\n".join(summary_lines))
+    else:
+        tail = "\n".join(lines[-20:]) if lines else "Log file was empty."
+        print("INGESTION SUMMARY not found. Recent log lines:\n" + tail)
+PY
+          {
+            echo "SLACK_SUMMARY<<'EOF'";
+            cat "$SUMMARY_FILE";
+            echo "EOF";
+          } >> "$GITHUB_ENV"
+
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_SUMMARY: ${{ env.SLACK_SUMMARY }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set; skipping Slack notification."
+            exit 0
+          fi
+          python - <<'PY'
+import json
+import os
+import urllib.request
+
+text = "*{workflow}* ({status})\n{summary}\n<{url}|View run>".format(
+    workflow=os.environ.get("WORKFLOW_NAME", "TOFU Ingestion"),
+    status=os.environ.get("JOB_STATUS", "unknown").upper(),
+    summary=os.environ.get("SLACK_SUMMARY", "No summary available."),
+    url=os.environ.get("RUN_URL", "")
+)
+payload = json.dumps({"text": text}).encode()
+req = urllib.request.Request(
+    os.environ["SLACK_WEBHOOK_URL"],
+    data=payload,
+    headers={"Content-Type": "application/json"}
+)
+with urllib.request.urlopen(req) as resp:
+    print(f"Slack response status: {resp.status}")
+PY
+
       - name: Upload logs (artifact)
         if: always()
         uses: actions/upload-artifact@v4
