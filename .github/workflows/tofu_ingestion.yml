@@ -44,11 +44,11 @@ jobs:
       - name: Validate credentials JSON
         run: |
           python - <<'PY'
-import json
-with open('credentials/google_service_account.json') as f:
-    json.load(f)
-print("Google credentials JSON looks good.")
-PY
+          import json
+          with open('credentials/google_service_account.json') as f:
+              json.load(f)
+          print("Google credentials JSON looks good.")
+          PY
 
       - name: Install dependencies
         run: |
@@ -90,25 +90,25 @@ PY
             exit 0
           fi
           python - <<'PY'
-import json
-import os
-import urllib.request
-
-text = "*{workflow}* ({status})\n{summary}\n<{url}|View run>".format(
-    workflow=os.environ.get("WORKFLOW_NAME", "TOFU Ingestion"),
-    status=os.environ.get("JOB_STATUS", "unknown").upper(),
-    summary=os.environ.get("SLACK_SUMMARY", "No summary available."),
-    url=os.environ.get("RUN_URL", "")
-)
-payload = json.dumps({"text": text}).encode()
-req = urllib.request.Request(
-    os.environ["SLACK_WEBHOOK_URL"],
-    data=payload,
-    headers={"Content-Type": "application/json"}
-)
-with urllib.request.urlopen(req) as resp:
-    print(f"Slack response status: {resp.status}")
-PY
+          import json
+          import os
+          import urllib.request
+          
+          text = "*{workflow}* ({status})\n{summary}\n<{url}|View run>".format(
+              workflow=os.environ.get("WORKFLOW_NAME", "TOFU Ingestion"),
+              status=os.environ.get("JOB_STATUS", "unknown").upper(),
+              summary=os.environ.get("SLACK_SUMMARY", "No summary available."),
+              url=os.environ.get("RUN_URL", "")
+          )
+          payload = json.dumps({"text": text}).encode()
+          req = urllib.request.Request(
+              os.environ["SLACK_WEBHOOK_URL"],
+              data=payload,
+              headers={"Content-Type": "application/json"}
+          )
+          with urllib.request.urlopen(req) as resp:
+              print(f"Slack response status: {resp.status}")
+          PY
 
       - name: Upload logs (artifact)
         if: always()
