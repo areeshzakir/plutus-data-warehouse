@@ -72,30 +72,30 @@ jobs:
         run: |
           SUMMARY_FILE=summary.txt
           python - <<'PY' > "$SUMMARY_FILE"
-          import pathlib
+            import pathlib
 
-          log_path = pathlib.Path("logs/tofu_ingestion.log")
-          if not log_path.exists():
-              print("Log file logs/tofu_ingestion.log not found.")
-          else:
-              lines = log_path.read_text().splitlines()
-              summary_lines = []
-              capture = False
-              for line in lines:
-                  if "INGESTION SUMMARY" in line:
-                      capture = True
-                  if capture:
-                      summary_lines.append(line)
-              if summary_lines:
-                  print("\n".join(summary_lines))
-              else:
-                  tail = "\n".join(lines[-20:]) if lines else "Log file was empty."
-                  print("INGESTION SUMMARY not found. Recent log lines:\n" + tail)
+            log_path = pathlib.Path("logs/tofu_ingestion.log")
+            if not log_path.exists():
+                print("Log file logs/tofu_ingestion.log not found.")
+            else:
+                lines = log_path.read_text().splitlines()
+                summary_lines = []
+                capture = False
+                for line in lines:
+                    if "INGESTION SUMMARY" in line:
+                        capture = True
+                    if capture:
+                        summary_lines.append(line)
+                if summary_lines:
+                    print("\n".join(summary_lines))
+                else:
+                    tail = "\n".join(lines[-20:]) if lines else "Log file was empty."
+                    print("INGESTION SUMMARY not found. Recent log lines:\n" + tail)
           PY
           {
-            echo "SLACK_SUMMARY<<'EOF'";
+            echo "SLACK_SUMMARY<<SUMMARY";
             cat "$SUMMARY_FILE";
-            echo "EOF";
+            echo "SUMMARY";
           } >> "$GITHUB_ENV"
 
       - name: Notify Slack
