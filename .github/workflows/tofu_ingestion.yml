@@ -1,0 +1,55 @@
+name: TOFU Ingestion
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 03:00 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libffi-dev
+
+      - name: Create credentials and env
+        run: |
+          mkdir -p credentials logs
+          echo "${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}" > credentials/google_service_account.json
+          {
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}";
+            echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}";
+            echo "GOOGLE_APPLICATION_CREDENTIALS=${{ github.workspace }}/credentials/google_service_account.json";
+          } > .env
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          . venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ingestion
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          . venv/bin/activate
+          python cli.py tofu-ingestion
+
+      - name: Upload logs (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tofu-ingestion-logs
+          path: logs/
