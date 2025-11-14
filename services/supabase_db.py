@@ -1,7 +1,7 @@
 """
 Supabase database client for TOFU leads
 """
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Union
 import logging
 import pandas as pd
@@ -10,6 +10,10 @@ from supabase import create_client, Client
 from config import SUPABASE_URL, SUPABASE_KEY, SUPABASE_TABLE
 
 logger = logging.getLogger(__name__)
+
+# Timestamp safety settings
+MAX_TIMESTAMP_DRIFT = timedelta(days=1)  # allow at most 1 day into the future
+INCREMENTAL_ROLLBACK_WINDOW = timedelta(days=1)  # reprocess the last day to avoid gaps
 
 
 class SupabaseClient:
@@ -51,8 +55,10 @@ class SupabaseClient:
                 timestamp_str = response.data[0].get("created_date")
                 if timestamp_str:
                     timestamp = pd.to_datetime(timestamp_str, utc=True)
-                    logger.info(f"Last ingestion timestamp for '{source_sheet}': {timestamp}")
-                    return timestamp.to_pydatetime()
+                    logger.info(
+                        f"Last ingestion timestamp for '{source_sheet}': {timestamp}"
+                    )
+                    return self._sanitize_timestamp(timestamp.to_pydatetime(), source_sheet)
             
             logger.info(f"No existing records found for source: {source_sheet}")
             return None
@@ -60,6 +66,37 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Error fetching last ingestion timestamp: {e}", exc_info=True)
             return None
+
+    def _sanitize_timestamp(
+        self, raw_timestamp: datetime, source_sheet: str
+    ) -> datetime:
+        """
+        Clamp timestamps that drift into the future and roll back slightly so we reprocess
+        the most recent window (relies on DB dedupe to avoid duplicates).
+        """
+        if raw_timestamp.tzinfo is None:
+            raw_timestamp = raw_timestamp.replace(tzinfo=timezone.utc)
+
+        now_utc = datetime.now(timezone.utc)
+        cutoff = now_utc + MAX_TIMESTAMP_DRIFT
+        adjusted = raw_timestamp
+
+        if raw_timestamp > cutoff:
+            logger.warning(
+                f"Timestamp from Supabase ({raw_timestamp}) for '{source_sheet}' "
+                f"exceeds current time by more than {MAX_TIMESTAMP_DRIFT}. "
+                f"Clamping to {cutoff}."
+            )
+            adjusted = cutoff
+
+        if INCREMENTAL_ROLLBACK_WINDOW > timedelta(0):
+            adjusted = adjusted - INCREMENTAL_ROLLBACK_WINDOW
+            logger.info(
+                f"Using rollback window of {INCREMENTAL_ROLLBACK_WINDOW} for '{source_sheet}'. "
+                f"Effective timestamp: {adjusted}"
+            )
+
+        return adjusted
     
     def insert_records(
         self, 
