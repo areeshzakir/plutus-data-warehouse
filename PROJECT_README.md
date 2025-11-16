@@ -103,12 +103,30 @@ python cli.py tofu-ingestion
 python cli.py tofu-ingestion [--dry-run] [--verbose] [--sheet SHEET_NAME]
 ```
 
+### ✅ #2: BOFU Transactions Ingestion
+
+**Status:** Complete and aligned with the TOFU tooling.
+
+**Purpose:** Pull ready-to-store transaction data from the Testbook CSV API and write it to Supabase exactly as received. A unique constraint on `txn_id` prevents duplicates while still attempting to insert every row each run.
+
+**Features:**
+- Reads config from `.env` (`BOFU_API_URL`, `BOFU_API_KEY`, `BOFU_SUPABASE_TABLE`).
+- Keeps column order agnostic; missing columns become NULLs, unexpected ones get logged and stored inside a JSON `payload` column so nothing is lost.
+- Uses the shared logging + Supabase helpers; logs live at `logs/bofu_ingestion.log`.
+
+**Documentation:** [microservices/bofu_ingestion/README.md](microservices/bofu_ingestion/README.md)
+
+**Usage:**
+```bash
+python cli.py bofu-ingestion [--dry-run] [--verbose]
+```
+
 ### 🔜 Future Microservices
 
-- **#2:** Zoom Webinar/Bootcamp Data Processing
-- **#3:** CRM Sales Data Sync
-- **#4:** Marketing Spend Aggregation
-- **#5:** Unified Reporting Layer
+- **#3:** Zoom Webinar/Bootcamp Data Processing
+- **#4:** CRM Sales Data Sync
+- **#5:** Marketing Spend Aggregation
+- **#6:** Unified Reporting Layer
 
 ## 🗄️ Database Schema
 
@@ -137,13 +155,17 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-anon-or-service-key
 GOOGLE_SERVICE_ACCOUNT_FILE=credentials/google_service_account.json
 LOG_LEVEL=INFO
+BOFU_API_URL=https://data.testbook.com/api/queries/18351/results.csv
+BOFU_API_KEY=your-api-key
+BOFU_SUPABASE_TABLE=bofu_transactions
 ```
 
 ## 📝 Logging
 
 Logs are written to:
 - Console (INFO level)
-- File: `logs/tofu_ingestion.log` (DEBUG level)
+- `logs/tofu_ingestion.log` for TOFU runs (DEBUG level)
+- `logs/bofu_ingestion.log` for BOFU runs (DEBUG level)
 
 View logs:
 ```bash

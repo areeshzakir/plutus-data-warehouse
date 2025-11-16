@@ -8,6 +8,9 @@ supabase==2.9.0
 # Data manipulation
 pandas==2.2.0
 
+# HTTP clients
+requests==2.32.3
+
 # Environment variables
 python-dotenv==1.0.1
 

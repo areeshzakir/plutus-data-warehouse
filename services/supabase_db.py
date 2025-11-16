@@ -19,48 +19,66 @@ INCREMENTAL_ROLLBACK_WINDOW = timedelta(days=1)  # reprocess the last day to avo
 class SupabaseClient:
     """Client for interacting with Supabase database"""
     
-    def __init__(self):
+    def __init__(self, table_name: str = SUPABASE_TABLE):
         """Initialize Supabase client"""
         try:
             self.client: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-            logger.info("Supabase client initialized successfully")
+            self.table_name = table_name
+            logger.info(
+                "Supabase client initialized successfully for table '%s'",
+                self.table_name
+            )
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {e}")
             raise
     
-    def get_last_ingestion_timestamp(self, source_sheet: str) -> Optional[datetime]:
+    def get_last_ingestion_timestamp(
+        self,
+        source_value: str,
+        date_column: str = "created_date",
+        source_column: str = "source_sheet",
+    ) -> Optional[datetime]:
         """
-        Get the most recent created_date for a specific source sheet.
+        Get the most recent timestamp for a specific source value.
         
         Args:
-            source_sheet: Name of the source sheet
+            source_value: Value stored in the source column (e.g., sheet name)
+            date_column: Name of the timestamp column to inspect
+            source_column: Name of the column that identifies the source
             
         Returns:
             Most recent datetime, or None if no records exist
         """
         try:
-            logger.debug(f"Fetching last ingestion timestamp for source: {source_sheet}")
+            logger.debug(
+                "Fetching last ingestion timestamp for %s where %s = %s",
+                date_column,
+                source_column,
+                source_value,
+            )
             
             response = (
-                self.client.table(SUPABASE_TABLE)
-                .select("created_date")
-                .eq("source_sheet", source_sheet)
-                .order("created_date", desc=True)
+                self.client.table(self.table_name)
+                .select(date_column)
+                .eq(source_column, source_value)
+                .order(date_column, desc=True)
                 .limit(1)
                 .execute()
             )
             
             if response.data and len(response.data) > 0:
                 # Parse the timestamp string to datetime
-                timestamp_str = response.data[0].get("created_date")
+                timestamp_str = response.data[0].get(date_column)
                 if timestamp_str:
                     timestamp = pd.to_datetime(timestamp_str, utc=True)
                     logger.info(
-                        f"Last ingestion timestamp for '{source_sheet}': {timestamp}"
+                        "Last ingestion timestamp for '%s': %s",
+                        source_value,
+                        timestamp,
                     )
-                    return self._sanitize_timestamp(timestamp.to_pydatetime(), source_sheet)
+                    return self._sanitize_timestamp(timestamp.to_pydatetime(), source_value)
             
-            logger.info(f"No existing records found for source: {source_sheet}")
+            logger.info("No existing records found for source: %s", source_value)
             return None
             
         except Exception as e:
@@ -146,7 +164,7 @@ class SupabaseClient:
                 
                 # Try to insert entire batch
                 response = (
-                    self.client.table(SUPABASE_TABLE)
+                    self.client.table(self.table_name)
                     .insert(batch)
                     .execute()
                 )
@@ -174,7 +192,7 @@ class SupabaseClient:
                         sub_batch = batch[sub_i:sub_i + sub_batch_size]
                         try:
                             sub_response = (
-                                self.client.table(SUPABASE_TABLE)
+                                self.client.table(self.table_name)
                                 .insert(sub_batch)
                                 .execute()
                             )
@@ -185,7 +203,7 @@ class SupabaseClient:
                             for record in sub_batch:
                                 try:
                                     single_response = (
-                                        self.client.table(SUPABASE_TABLE)
+                                    self.client.table(self.table_name)
                                         .insert([record])
                                         .execute()
                                     )
