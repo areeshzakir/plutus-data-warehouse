@@ -31,6 +31,14 @@ BOFU_SUPABASE_TABLE = os.getenv("BOFU_SUPABASE_TABLE", "bofu_transactions")
 MOFU_API_URL = os.getenv("MOFU_API_URL")
 MOFU_SUPABASE_TABLE = os.getenv("MOFU_SUPABASE_TABLE", "mofu_lead_assignments")
 
+# Zoom Webinar Data (Google Sheets)
+ZOOM_SHEET_ID = os.getenv(
+    "ZOOM_SHEET_ID",
+    "1_5weku38mXGFrGZgHa0yGo8VDxn6XMXkXbThLpp8FhY",
+)
+ZOOM_SHEET_TAB = os.getenv("ZOOM_SHEET_TAB", "Zoom Data - July/Jun")
+ZOOM_SUPABASE_TABLE = os.getenv("ZOOM_SUPABASE_TABLE", "zoom_webinar_attendance")
+
 
 # Google Service Account
 GOOGLE_SERVICE_ACCOUNT_FILE = BASE_DIR / os.getenv(
@@ -145,11 +153,34 @@ MOFU_DB_COLUMN_MAP = {
 }
 MOFU_EXPECTED_COLUMNS = list(MOFU_DB_COLUMN_MAP.values())
 
+# Zoom Webinar Columns
+ZOOM_DB_COLUMN_MAP = {
+    "Mon": "mon",
+    "Webinar Date": "webinar_date",
+    "Category": "category",
+    "Attended": "attended",
+    "User Name (Original Name)": "user_name",
+    "First Name": "first_name",
+    "Last Name": "last_name",
+    "Email": "email",
+    "Phone": "phone",
+    "Registration Time": "registration_time",
+    "Approval Status": "approval_status",
+    "Join Time": "join_time",
+    "Leave Time": "leave_time",
+    "Time in Session (minutes)": "time_in_session_minutes",
+    "Is Guest": "is_guest",
+    "Country/Region Name": "country_region_name",
+    "Source": "source",
+}
+ZOOM_EXPECTED_COLUMNS = list(ZOOM_DB_COLUMN_MAP.values())
+
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE = BASE_DIR / os.getenv("LOG_FILE", "logs/tofu_ingestion.log")
 BOFU_LOG_FILE = BASE_DIR / os.getenv("BOFU_LOG_FILE", "logs/bofu_ingestion.log")
 MOFU_LOG_FILE = BASE_DIR / os.getenv("MOFU_LOG_FILE", "logs/mofu_ingestion.log")
+ZOOM_LOG_FILE = BASE_DIR / os.getenv("ZOOM_LOG_FILE", "logs/zoom_ingestion.log")
 
 # Validation
 if not SUPABASE_URL or not SUPABASE_KEY:

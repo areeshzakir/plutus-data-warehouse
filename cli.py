@@ -46,6 +46,17 @@ def run_mofu_ingestion(args):
     return exit_code
 
 
+def run_zoom_ingestion(args):
+    """Run Zoom webinar attendance ingestion"""
+    from microservices.zoom_ingestion.main import main
+
+    exit_code = main(
+        dry_run=args.dry_run,
+        verbose=args.verbose,
+    )
+    return exit_code
+
+
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
@@ -124,6 +135,23 @@ Examples:
         help="Enable debug logging"
     )
     mofu_parser.set_defaults(func=run_mofu_ingestion)
+
+    # Zoom ingestion command
+    zoom_parser = subparsers.add_parser(
+        "zoom-ingestion",
+        help="Run Zoom webinar attendance ingestion from Google Sheets"
+    )
+    zoom_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run without writing to database (test mode)"
+    )
+    zoom_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable debug logging"
+    )
+    zoom_parser.set_defaults(func=run_zoom_ingestion)
     
     # Parse arguments
     args = parser.parse_args()
