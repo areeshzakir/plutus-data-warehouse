@@ -85,7 +85,7 @@ class ZoomIngestionOrchestrator:
         self.db_client = SupabaseClient(table_name=ZOOM_SUPABASE_TABLE)
         self.source_sheet_name = ZOOM_SHEET_TAB
 
-    def run(self, dry_run: bool = False) -> Dict:
+    def run(self, dry_run: bool = False, full_refresh: bool = False) -> Dict:
         summary = {
             "fetched": 0,
             "invalid_contact": 0,
@@ -115,10 +115,13 @@ class ZoomIngestionOrchestrator:
             df_dedup = self._dedupe(df_clean)
             summary["deduped"] = len(df_dedup)
 
-            df_filtered = self._apply_incremental_filter(df_dedup)
-            if df_filtered.empty:
-                logger.info("No new Zoom records to insert after incremental filter")
-                return summary
+            if full_refresh:
+                df_filtered = df_dedup
+            else:
+                df_filtered = self._apply_incremental_filter(df_dedup)
+                if df_filtered.empty:
+                    logger.info("No new Zoom records to insert after incremental filter")
+                    return summary
 
             df_ready = self._prepare_for_upsert(df_filtered)
 
@@ -148,8 +151,28 @@ class ZoomIngestionOrchestrator:
         df = df_raw.copy()
         df.columns = df.columns.str.strip()
 
-        payload_records = df.to_dict("records")
-        payload_series = pd.Series(payload_records, index=df.index)
+        # Build payload and sanitize non-JSON-safe values (e.g., Infinity)
+        raw_payload = df.to_dict("records")
+        def sanitize_value(v):
+            try:
+                if isinstance(v, float) and (pd.isna(v) or pd.isinf(v)):
+                    return None if pd.isna(v) else 0
+            except Exception:
+                pass
+            if hasattr(v, "isoformat"):
+                return v.isoformat()
+            if v in (float('inf'), float('-inf'), 'Infinity', '-Infinity'):
+                return 0
+            return v
+
+        sanitized_payload = []
+        for rec in raw_payload:
+            clean_rec = {}
+            for k, v in rec.items():
+                clean_rec[k] = sanitize_value(v)
+            sanitized_payload.append(clean_rec)
+
+        payload_series = pd.Series(sanitized_payload, index=df.index)
 
         # Rename to snake_case
         columns_to_rename = {k: v for k, v in ZOOM_DB_COLUMN_MAP.items() if k in df.columns}
@@ -330,18 +353,37 @@ class ZoomIngestionOrchestrator:
 
     def _prepare_for_upsert(self, df: pd.DataFrame) -> pd.DataFrame:
         df_ready = df.copy()
+        # Drop helper columns that should not be sent to DB
+        drop_cols = [
+            "webinar_date_dt",
+            "join_dt",
+            "leave_dt",
+            "registration_dt",
+            "dedupe_key",
+            "attended_bool",
+            "is_guest_bool",
+        ]
+        df_ready = df_ready[[c for c in df_ready.columns if c not in drop_cols]]
+
+        # Ensure no pandas Timestamp objects remain
+        for col in ["join_time", "leave_time", "registration_time", "webinar_date"]:
+            if col in df_ready.columns:
+                df_ready[col] = df_ready[col].apply(
+                    lambda v: v.isoformat() if hasattr(v, "isoformat") else v
+                )
+
         # webinar_date already ISO date string; join/leave/registration already formatted strings or None
         df_ready = df_ready.where(pd.notna(df_ready), None)
         return df_ready
 
 
-def main(dry_run: bool = False, verbose: bool = False) -> int:
+def main(dry_run: bool = False, verbose: bool = False, full_refresh: bool = False) -> int:
     """Entry point for CLI"""
     log_level = "DEBUG" if verbose else LOG_LEVEL
     setup_logger("root", ZOOM_LOG_FILE, log_level)
 
     orchestrator = ZoomIngestionOrchestrator()
-    summary = orchestrator.run(dry_run=dry_run)
+    summary = orchestrator.run(dry_run=dry_run, full_refresh=full_refresh)
 
     exit_code = 1 if summary.get("error") else 0
     return exit_code
@@ -353,6 +395,7 @@ if __name__ == "__main__":  # pragma: no cover
     parser = argparse.ArgumentParser(description="Zoom Webinar Attendance Ingestion")
     parser.add_argument("--dry-run", action="store_true", help="Skip database writes")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument("--full-refresh", action="store_true", help="Bypass incremental filter and process all rows")
 
     args = parser.parse_args()
-    sys.exit(main(dry_run=args.dry_run, verbose=args.verbose))
+    sys.exit(main(dry_run=args.dry_run, verbose=args.verbose, full_refresh=args.full_refresh))

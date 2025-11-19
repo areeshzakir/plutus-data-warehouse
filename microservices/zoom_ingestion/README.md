@@ -35,6 +35,9 @@ python cli.py zoom-ingestion --dry-run --verbose
 
 # Real ingestion
 python cli.py zoom-ingestion
+
+# Full refresh (bypass incremental filter, reprocess all rows)
+python cli.py zoom-ingestion --full-refresh --verbose
 ```
 
 ## Table Schema

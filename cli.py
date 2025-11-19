@@ -53,6 +53,7 @@ def run_zoom_ingestion(args):
     exit_code = main(
         dry_run=args.dry_run,
         verbose=args.verbose,
+        full_refresh=getattr(args, "full_refresh", False),
     )
     return exit_code
 
@@ -150,6 +151,11 @@ Examples:
         "--verbose",
         action="store_true",
         help="Enable debug logging"
+    )
+    zoom_parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help="Bypass incremental filter and process all rows"
     )
     zoom_parser.set_defaults(func=run_zoom_ingestion)
     

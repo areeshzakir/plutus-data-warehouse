@@ -1,0 +1,112 @@
+name: Zoom Ingestion
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 04:00 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev libffi-dev
+
+      - name: Create credentials and env
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          mkdir -p credentials logs
+          python3 -c "import json, os; json.dump(json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_JSON']), open('credentials/google_service_account.json', 'w'), indent=2)"
+          {
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}";
+            echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}";
+            echo "ZOOM_SHEET_ID=${{ secrets.ZOOM_SHEET_ID }}";
+            echo "ZOOM_SHEET_TAB=${{ secrets.ZOOM_SHEET_TAB }}";
+            echo "ZOOM_SUPABASE_TABLE=${{ secrets.ZOOM_SUPABASE_TABLE }}";
+            echo "ZOOM_LOG_FILE=logs/zoom_ingestion.log";
+            echo "GOOGLE_APPLICATION_CREDENTIALS=${{ github.workspace }}/credentials/google_service_account.json";
+          } > .env
+
+      - name: Validate credentials JSON
+        run: |
+          python -c "import json; json.load(open('credentials/google_service_account.json')); print('Google credentials JSON looks good.')"
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          . venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run ingestion
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          . venv/bin/activate
+          python cli.py zoom-ingestion
+
+      - name: Extract ingestion summary
+        if: always()
+        run: |
+          SUMMARY_FILE=summary.txt
+          python scripts/extract_zoom_summary.py > "$SUMMARY_FILE"
+          {
+            echo "SLACK_SUMMARY<<EOF";
+            cat "$SUMMARY_FILE";
+            echo "EOF";
+          } >> "$GITHUB_ENV"
+
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_SUMMARY: ${{ env.SLACK_SUMMARY }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set; skipping Slack notification."
+            exit 0
+          fi
+          cat > /tmp/slack_notify.py << 'SCRIPT'
+          import json
+          import os
+          import urllib.request
+          
+          text = "*{workflow}* ({status})\n{summary}\n<{url}|View run>".format(
+              workflow=os.environ.get("WORKFLOW_NAME", "Zoom Ingestion"),
+              status=os.environ.get("JOB_STATUS", "unknown").upper(),
+              summary=os.environ.get("SLACK_SUMMARY", "No summary available."),
+              url=os.environ.get("RUN_URL", "")
+          )
+          payload = json.dumps({"text": text}).encode()
+          req = urllib.request.Request(
+              os.environ["SLACK_WEBHOOK_URL"],
+              data=payload,
+              headers={"Content-Type": "application/json"}
+          )
+          with urllib.request.urlopen(req) as resp:
+              print(f"Slack response status: {resp.status}")
+          SCRIPT
+          sed 's/^          //' /tmp/slack_notify.py > /tmp/slack_notify_fixed.py
+          python3 /tmp/slack_notify_fixed.py
+
+      - name: Upload logs (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoom-ingestion-logs
+          path: logs/
