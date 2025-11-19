@@ -4,6 +4,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Dict
+import math
+import numbers
+import numpy as np
+from decimal import Decimal
 
 import logging
 import pandas as pd
@@ -101,7 +105,7 @@ class BOFUIngestionOrchestrator:
                 ", ".join(unexpected),
             )
 
-        payload_records = df.to_dict("records")
+        payload_records = [self._sanitize_payload(rec) for rec in df.to_dict("records")]
 
         ordered_cols = [col for col in BOFU_DB_COLUMN_MAP.keys() if col in df.columns]
         df = df[ordered_cols]
@@ -114,8 +118,29 @@ class BOFUIngestionOrchestrator:
                 df[column] = None
 
         df = df[BOFU_EXPECTED_COLUMNS + ["payload"]]
-        df = df.where(pd.notna(df), None)
+        df = df.astype(object).where(pd.notna(df), None)
         return df
+
+    @staticmethod
+    def _sanitize_payload(record: Dict[str, object]) -> Dict[str, object]:
+        clean: Dict[str, object] = {}
+        for key, value in record.items():
+            if isinstance(value, numbers.Real):
+                if isinstance(value, np.floating):
+                    value = float(value)
+                if isinstance(value, Decimal):
+                    value = float(value)
+                if pd.isna(value):
+                    clean[key] = None
+                elif math.isinf(value):
+                    clean[key] = 0
+                else:
+                    clean[key] = value
+            elif hasattr(value, "isoformat"):
+                clean[key] = value.isoformat()
+            else:
+                clean[key] = value
+        return clean
 
 
 def main(dry_run: bool = False, verbose: bool = False) -> int:

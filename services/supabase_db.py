@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Timestamp safety settings
 MAX_TIMESTAMP_DRIFT = timedelta(days=1)  # allow at most 1 day into the future
-INCREMENTAL_ROLLBACK_WINDOW = timedelta(days=4)  # reprocess the last day to avoid gaps
+INCREMENTAL_ROLLBACK_WINDOW = timedelta(days=1)  # reprocess the last day to avoid gaps
 
 
 class SupabaseClient:
