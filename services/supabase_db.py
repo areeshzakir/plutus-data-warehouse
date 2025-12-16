@@ -178,11 +178,18 @@ class SupabaseClient:
                     logger.debug(f"Batch {batch_num} completed")
                     
             except Exception as e:
-                # Check if it's a duplicate key error (code 23505)
+                # Check if it's a recoverable error (duplicate key 23505 or check constraint 23514)
                 error_str = str(e)
-                if '23505' in error_str or 'duplicate key' in error_str.lower():
-                    # Batch has duplicates - try smaller sub-batches
-                    logger.debug(f"Batch {batch_num} has duplicates, using sub-batches...")
+                is_recoverable = (
+                    '23505' in error_str or  # Duplicate key
+                    '23514' in error_str or  # CHECK constraint violation (e.g., future dates)
+                    'duplicate key' in error_str.lower() or
+                    'check constraint' in error_str.lower()
+                )
+                
+                if is_recoverable:
+                    # Batch has bad records - try smaller sub-batches to isolate them
+                    logger.debug(f"Batch {batch_num} has constraint violations, using sub-batches...")
                     batch_succeeded = 0
                     batch_skipped = 0
                     
@@ -199,32 +206,56 @@ class SupabaseClient:
                             if sub_response.data:
                                 batch_succeeded += len(sub_response.data)
                         except Exception as sub_error:
-                            # Sub-batch still has duplicates - try one by one
+                            # Sub-batch still has issues - try one by one
                             for record in sub_batch:
                                 try:
                                     single_response = (
-                                    self.client.table(self.table_name)
+                                        self.client.table(self.table_name)
                                         .insert([record])
                                         .execute()
                                     )
                                     if single_response.data:
                                         batch_succeeded += 1
-                                except:
+                                except Exception as single_error:
                                     batch_skipped += 1
+                                    # Log the specific error for debugging
+                                    logger.debug(
+                                        f"Skipped record (constraint violation): {str(single_error)[:100]}"
+                                    )
                     
                     succeeded += batch_succeeded
                     skipped += batch_skipped
                     logger.debug(
                         f"Batch {batch_num}: {batch_succeeded} inserted, "
-                        f"{batch_skipped} skipped (duplicates)"
+                        f"{batch_skipped} skipped (constraint violations)"
                     )
                 else:
-                    # Unexpected error
-                    logger.error(
-                        f"Batch {batch_num} unexpected error: {e}",
-                        exc_info=True
+                    # Truly unexpected error - still try sub-batches instead of skipping all
+                    logger.warning(
+                        f"Batch {batch_num} unexpected error: {e}, trying sub-batches..."
                     )
-                    skipped += len(batch)
+                    batch_succeeded = 0
+                    batch_skipped = 0
+                    
+                    # Try one by one as fallback
+                    for record in batch:
+                        try:
+                            single_response = (
+                                self.client.table(self.table_name)
+                                .insert([record])
+                                .execute()
+                            )
+                            if single_response.data:
+                                batch_succeeded += 1
+                        except Exception as single_error:
+                            batch_skipped += 1
+                    
+                    succeeded += batch_succeeded
+                    skipped += batch_skipped
+                    logger.info(
+                        f"Batch {batch_num} recovery: {batch_succeeded} inserted, "
+                        f"{batch_skipped} skipped"
+                    )
         
         result = {
             'attempted': total,

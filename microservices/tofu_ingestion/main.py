@@ -205,7 +205,21 @@ class TOFUIngestionOrchestrator:
             )
         
         df_valid = df[~invalid_mask].copy()
-        return df_valid, invalid_count
+        
+        # Filter out future-dated records (more than 1 day ahead)
+        # This prevents CHECK constraint violations that would skip entire batches
+        from datetime import datetime, timezone, timedelta
+        max_allowed_date = datetime.now(timezone.utc) + timedelta(days=1)
+        future_mask = df_valid['created_date'] > max_allowed_date
+        future_count = future_mask.sum()
+        
+        if future_count > 0:
+            logger.warning(
+                f"Dropping {future_count} rows with future dates (beyond {max_allowed_date.date()})"
+            )
+            df_valid = df_valid[~future_mask].copy()
+        
+        return df_valid, invalid_count + future_count
     
     def _generate_user_ids(self, df: pd.DataFrame) -> tuple:
         """Generate user_id from phone_number"""
